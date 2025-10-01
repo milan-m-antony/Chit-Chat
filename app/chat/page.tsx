@@ -211,25 +211,44 @@ export default function ChatPage() {
         const state = channel.presenceState();
         const allUsers = Object.values(state).flat() as any[];
         
-        // Fetch avatar styles from database for all users
-        const userIds = allUsers.map((u: any) => u.userId);
-        const { data: profiles } = await supabase
+        console.log('Presence sync - raw users:', allUsers);
+        
+        // Fetch avatar styles and usernames from database for all users
+        const userIds = allUsers.map((u: any) => u.userId).filter(Boolean);
+        
+        if (userIds.length === 0) {
+          setOnlineUsersList([]);
+          setOnlineCount(0);
+          return;
+        }
+        
+        const { data: profiles, error } = await supabase
           .from('user_profiles')
-          .select('id, avatar_style')
+          .select('id, username, avatar_style')
           .in('id', userIds);
+        
+        if (error) {
+          console.error('Error fetching profiles:', error);
+        }
+        
+        console.log('Fetched profiles:', profiles);
         
         // Map avatar styles to users
         const usersWithAvatars = allUsers.map((user: any) => {
           const profile = profiles?.find((p) => p.id === user.userId);
           return {
-            ...user,
+            userId: user.userId,
+            username: profile?.username || user.username || 'Unknown',
             avatar_style: profile?.avatar_style || user.avatar_style || 'avataaars',
+            online_at: user.online_at || new Date().toISOString(),
           };
         });
         
         // Filter out current user from the list
         const otherUsers = usersWithAvatars.filter((user: any) => user.userId !== userId);
         const totalCount = allUsers.length; // Total including yourself
+        
+        console.log('Processed users:', { totalCount, otherUsers });
         
         // Check for new users
         const previousUserIds = onlineUsersList.map((u: any) => u.userId);
@@ -244,7 +263,6 @@ export default function ChatPage() {
           });
         }
         
-        console.log('Online users:', totalCount, 'Others:', otherUsers);
         setOnlineCount(totalCount);
         setOnlineUsersList(otherUsers); // Only show other users
       })
@@ -388,6 +406,33 @@ export default function ChatPage() {
     }
   };
 
+  const handleDeleteAllMessages = async () => {
+    if (!confirm('Are you sure you want to delete ALL messages in this room? This cannot be undone!')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('room', currentRoom);
+
+      if (error) throw error;
+
+      toast.success('All messages deleted', {
+        description: 'The room has been cleared',
+      });
+      
+      // Reload messages
+      loadMessages();
+    } catch (error) {
+      console.error('Error deleting messages:', error);
+      toast.error('Failed to delete messages', {
+        description: 'Please try again',
+      });
+    }
+  };
+
   const handleLogout = async () => {
     try {
       console.log('Logging out...');
@@ -508,68 +553,71 @@ export default function ChatPage() {
 
   // Don't render chat if no username (still loading or not authenticated)
   if (!username || !userId) {
+    // Prevent infinite loading by redirecting
+    if (typeof window !== 'undefined') {
+      router.push('/auth/login');
+    }
     return null;
   }
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground" suppressHydrationWarning>
       {/* Header */}
-      <div className="bg-card border-b border-border p-3 md:p-4">
-        <div className="flex items-center justify-between mb-3 md:mb-4">
-          <div className="flex items-center gap-3">
+      <div className="bg-card border-b border-border p-2 md:p-4">
+        <div className="flex items-center justify-between mb-2 md:mb-4 gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {/* User Avatar - Clickable */}
             <button 
               onClick={() => setShowProfileSettings(true)}
-              className="relative group cursor-pointer"
+              className="relative group cursor-pointer flex-shrink-0"
               title="Change Avatar"
             >
               <Image
                 src={`https://api.dicebear.com/7.x/${avatarStyle}/svg?seed=${username.toLowerCase()}`}
                 alt={username}
-                width={48}
-                height={48}
-                className="rounded-full border-2 border-primary group-hover:border-accent transition-colors"
+                width={40}
+                height={40}
+                className="rounded-full border-2 border-primary group-hover:border-accent transition-colors w-8 h-8 md:w-12 md:h-12"
                 unoptimized
               />
-              <div className="absolute inset-0 rounded-full bg-black opacity-0 group-hover:opacity-20 transition-opacity flex items-center justify-center">
-                <Settings size={20} className="text-white opacity-0 group-hover:opacity-100" />
-              </div>
             </button>
             {/* User Info */}
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">ChitChat</h1>
-              <p className="text-xs md:text-sm text-muted-foreground">Welcome, {username}!</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm md:text-2xl font-bold text-foreground truncate">ChitChat</h1>
+              <p className="text-xs text-muted-foreground truncate hidden sm:block">Welcome, {username}!</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-3">
-            <button onClick={() => setShowOnlineUsers(true)} className="cursor-pointer">
+          <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+            <button onClick={() => setShowOnlineUsers(true)} className="cursor-pointer hidden md:block">
               <OnlineUsers users={onlineUsersList} />
             </button>
             <button
-              onClick={() => setShowProfileSettings(true)}
-              className="p-2 rounded-lg bg-muted hover:bg-accent transition text-foreground"
-              title="Profile Settings"
-            >
-              <Settings size={18} className="md:w-5 md:h-5" />
-            </button>
-            <button
               onClick={toggleDarkMode}
-              className="p-2 rounded-lg bg-muted hover:bg-accent transition text-foreground"
+              className="p-1.5 md:p-2 rounded-lg bg-muted hover:bg-accent transition text-foreground"
               title="Toggle Theme"
             >
-              {darkMode ? <Sun size={18} className="md:w-5 md:h-5" /> : <Moon size={18} className="md:w-5 md:h-5" />}
+              {darkMode ? <Sun size={16} className="md:w-5 md:h-5" /> : <Moon size={16} className="md:w-5 md:h-5" />}
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-2 bg-destructive hover:opacity-90 text-destructive-foreground rounded-lg transition text-sm md:text-base"
+              className="flex items-center gap-1 px-2 md:px-4 py-1.5 md:py-2 bg-destructive hover:opacity-90 text-destructive-foreground rounded-lg transition text-xs md:text-base"
             >
-              <LogOut size={16} className="md:w-[18px] md:h-[18px]" />
+              <LogOut size={14} className="md:w-[18px] md:h-[18px]" />
               <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>
 
-        <RoomSelector currentRoom={currentRoom} onRoomChange={setCurrentRoom} />
+        <div className="flex items-center justify-between gap-2">
+          <RoomSelector currentRoom={currentRoom} onRoomChange={setCurrentRoom} />
+          <button
+            onClick={handleDeleteAllMessages}
+            className="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition"
+            title="Delete all messages in this room"
+          >
+            Clear Room
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
