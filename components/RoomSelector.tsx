@@ -12,6 +12,7 @@ interface RoomSelectorProps {
 }
 
 export default function RoomSelector({ currentRoom, onRoomChange, userId }: RoomSelectorProps) {
+  const [joinedRooms, setJoinedRooms] = useState<string[]>([]);
   const [customRooms, setCustomRooms] = useState<CustomRoom[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -21,30 +22,37 @@ export default function RoomSelector({ currentRoom, onRoomChange, userId }: Room
   const [joinPassword, setJoinPassword] = useState('');
 
   useEffect(() => {
-    loadCustomRooms();
+    // Load joined rooms from localStorage
+    const saved = localStorage.getItem(`joinedRooms_${userId}`);
+    if (saved) {
+      const rooms = JSON.parse(saved);
+      setJoinedRooms(rooms);
+      loadCustomRooms(rooms);
+    }
+  }, [userId]);
+
+  const loadCustomRooms = async (roomIds: string[]) => {
+    if (roomIds.length === 0) {
+      setCustomRooms([]);
+      return;
+    }
     
-    // Subscribe to room changes
-    const channel = supabase
-      .channel('custom_rooms_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_rooms' }, () => {
-        loadCustomRooms();
-      })
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, []);
-
-  const loadCustomRooms = async () => {
     const { data } = await supabase
       .from('custom_rooms')
       .select('*')
+      .in('id', roomIds)
       .order('created_at', { ascending: false });
     
     if (data) {
       setCustomRooms(data);
     }
+  };
+
+  const saveJoinedRoom = (roomId: string) => {
+    const updated = [...new Set([...joinedRooms, roomId])];
+    setJoinedRooms(updated);
+    localStorage.setItem(`joinedRooms_${userId}`, JSON.stringify(updated));
+    loadCustomRooms(updated);
   };
 
   const handleCreateRoom = async () => {
@@ -72,6 +80,7 @@ export default function RoomSelector({ currentRoom, onRoomChange, userId }: Room
     setShowCreateModal(false);
     setRoomName('');
     setRoomPassword('');
+    saveJoinedRoom(roomId);
     onRoomChange(roomId);
   };
 
@@ -96,6 +105,7 @@ export default function RoomSelector({ currentRoom, onRoomChange, userId }: Room
     setShowJoinModal(false);
     setJoinRoomId('');
     setJoinPassword('');
+    saveJoinedRoom(data.id);
     onRoomChange(data.id);
   };
 

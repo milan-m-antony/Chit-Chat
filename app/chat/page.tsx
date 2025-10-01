@@ -141,16 +141,30 @@ export default function ChatPage() {
     });
 
     // Handle visibility change (tab switching)
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-        console.log('Tab became visible - checking session');
-        // Refresh session when tab becomes visible
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (!session) {
-            console.log('No session found after tab switch');
-            window.location.href = '/auth/login';
+        console.log('Tab became visible - checking session and reconnecting');
+        
+        // Check session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log('No session found after tab switch');
+          window.location.href = '/auth/login';
+          return;
+        }
+        
+        // Reconnect realtime channel
+        if (channelRef.current) {
+          console.log('Reconnecting realtime channel...');
+          const status = channelRef.current.state;
+          if (status !== 'joined') {
+            await channelRef.current.subscribe();
           }
-        });
+        }
+        
+        // Reload messages to catch any missed
+        console.log('Reloading messages after tab switch');
+        loadMessages();
       }
     };
 
@@ -326,9 +340,19 @@ export default function ChatPage() {
             online_at: new Date().toISOString(),
           });
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('Channel error - retrying...');
+          console.error('Channel error - attempting to reconnect in 3s...');
+          setTimeout(async () => {
+            console.log('Reconnecting after error...');
+            await channel.subscribe();
+          }, 3000);
         } else if (status === 'TIMED_OUT') {
-          console.error('Subscription timed out');
+          console.error('Subscription timed out - attempting to reconnect...');
+          setTimeout(async () => {
+            console.log('Reconnecting after timeout...');
+            await channel.subscribe();
+          }, 2000);
+        } else if (status === 'CLOSED') {
+          console.log('Channel closed - will reconnect on next action');
         }
       });
 
