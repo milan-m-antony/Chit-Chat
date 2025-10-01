@@ -37,17 +37,34 @@ export default function ChatPage() {
   // Initialize user and check auth
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const initUser = async () => {
       try {
+        console.log('Initializing user...');
+        
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (mounted && isLoading) {
+            console.log('Loading timeout - redirecting to login');
+            setIsLoading(false);
+            window.location.href = '/auth/login';
+          }
+        }, 5000); // 5 second timeout
+        
         // Force refresh session to get latest user
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (!mounted) return;
+        if (!mounted) {
+          clearTimeout(timeoutId);
+          return;
+        }
 
         if (sessionError || !session) {
           console.log('No valid session, redirecting to login');
-          router.push('/auth/login');
+          clearTimeout(timeoutId);
+          setIsLoading(false);
+          window.location.href = '/auth/login';
           return;
         }
 
@@ -63,15 +80,19 @@ export default function ChatPage() {
 
         console.log('Profile query result:', { profile, profileError });
 
-        if (!mounted) return;
+        if (!mounted) {
+          clearTimeout(timeoutId);
+          return;
+        }
 
         if (profileError || !profile) {
           console.error('Error loading profile:', profileError);
           console.log('No profile found for user:', user.id);
           // Profile doesn't exist, redirect to login
           await supabase.auth.signOut();
+          clearTimeout(timeoutId);
           setIsLoading(false);
-          router.push('/auth/login');
+          window.location.href = '/auth/login';
           return;
         }
 
@@ -80,12 +101,14 @@ export default function ChatPage() {
         setUsername(profile.username);
         setUserColor(profile.color);
         setAvatarStyle(profile.avatar_style || 'avataaars');
+        clearTimeout(timeoutId);
         setIsLoading(false);
       } catch (error) {
         console.error('Error in initUser:', error);
         if (mounted) {
+          clearTimeout(timeoutId);
           setIsLoading(false);
-          router.push('/auth/login');
+          window.location.href = '/auth/login';
         }
       }
     };
@@ -117,11 +140,29 @@ export default function ChatPage() {
       }
     });
 
+    // Handle visibility change (tab switching)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('Tab became visible - checking session');
+        // Refresh session when tab becomes visible
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session) {
+            console.log('No session found after tab switch');
+            window.location.href = '/auth/login';
+          }
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [router]);
+  }, [router, isLoading]);
 
   // Check for dark mode preference on mount
   useEffect(() => {
