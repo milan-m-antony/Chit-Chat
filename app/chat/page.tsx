@@ -439,15 +439,16 @@ export default function ChatPage() {
       
       // Unsubscribe from channel first
       if (channelRef.current) {
+        console.log('Unsubscribing from channel...');
         await channelRef.current.unsubscribe();
       }
 
       // Sign out from Supabase
+      console.log('Signing out from Supabase...');
       const { error } = await supabase.auth.signOut();
       
       if (error) {
         console.error('Logout error:', error);
-        throw error;
       }
 
       // Clear local state
@@ -460,12 +461,12 @@ export default function ChatPage() {
 
       console.log('Logout successful, redirecting...');
       
-      // Redirect to home page
-      router.push('/auth/login');
+      // Force redirect
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error during logout:', error);
       // Force redirect anyway
-      router.push('/auth/login');
+      window.location.href = '/auth/login';
     }
   };
 
@@ -609,13 +610,13 @@ export default function ChatPage() {
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <RoomSelector currentRoom={currentRoom} onRoomChange={setCurrentRoom} />
+          <RoomSelector currentRoom={currentRoom} onRoomChange={setCurrentRoom} userId={userId} />
           <button
             onClick={handleDeleteAllMessages}
-            className="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition"
+            className="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition flex-shrink-0"
             title="Delete all messages in this room"
           >
-            Clear Room
+            Clear
           </button>
         </div>
       </div>

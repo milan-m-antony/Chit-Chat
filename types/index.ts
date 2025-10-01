@@ -34,4 +34,12 @@ export interface TypingUser {
   timestamp: number;
 }
 
-export type Room = 'general' | 'random' | 'tech';
+export interface CustomRoom {
+  id: string;
+  name: string;
+  password: string;
+  created_by: string;
+  created_at: string;
+}
+
+export type Room = 'general' | string;

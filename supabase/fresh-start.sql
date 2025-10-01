@@ -137,8 +137,31 @@ GRANT ALL ON user_profiles TO authenticated;
 GRANT ALL ON messages TO authenticated;
 GRANT ALL ON reactions TO authenticated;
 
+-- Create custom_rooms table
+CREATE TABLE IF NOT EXISTS custom_rooms (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  password TEXT NOT NULL,
+  created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS on custom_rooms
+ALTER TABLE custom_rooms ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for custom_rooms
+CREATE POLICY "Rooms are viewable by everyone" ON custom_rooms FOR SELECT USING (true);
+CREATE POLICY "Authenticated users can create rooms" ON custom_rooms FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Users can delete their own rooms" ON custom_rooms FOR DELETE USING (auth.uid() = created_by);
+
+-- Enable Realtime for custom_rooms
+ALTER PUBLICATION supabase_realtime ADD TABLE custom_rooms;
+
+-- Grant permissions
+GRANT ALL ON custom_rooms TO authenticated;
+
 -- Success message
 DO $$
 BEGIN
-  RAISE NOTICE '✅ Database reset complete! All tables created fresh with avatar_style support.';
+  RAISE NOTICE '✅ Database reset complete! All tables created fresh with avatar_style support and custom rooms.';
 END $$;
