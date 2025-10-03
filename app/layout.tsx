@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   description: "A modern real-time chat application built with Next.js, Supabase, and TailwindCSS",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
